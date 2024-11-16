@@ -53,7 +53,7 @@ const {
 	getFilesContents
 } = require("./utils");
 const OpenAI = require("openai");
-const API_BASE_URL = "https://www.blackboxapi.com";
+const API_BASE_URL = "http://localhost:3000";//"https://www.blackboxapi.com";
 let inlineVersion = 'quality'
 let autocompleteVersion = 'quality'
 let suggestionManager;
@@ -694,6 +694,14 @@ function activate(_) {
 			}
 		}
 	}
+
+	const uriHandler = new MyUriHandler();
+	_.subscriptions.push(vscode.window.registerUriHandler(uriHandler));
+  
+	// Register the command that will handle opening the page
+	_.subscriptions.push(
+	  vscode.commands.registerCommand('blackbox.openPage', openPageInExtension)
+	);
 
 	inlineVersion = _.globalState.get("inlineVersion")
 	if (!inlineVersion){
@@ -10288,6 +10296,108 @@ function activate(_) {
 	// _.subscriptions.push(codeLensProvider);
 }
 
+class MyUriHandler {
+	handleUri(uri) {
+	console.log("1", uri);
+	  if (uri.path === '/openPage') {
+		console.log("2");
+		const queryParams = new URLSearchParams(uri.query);
+		console.log("3");
+		const page = queryParams.get('page');
+		console.log("4",page);
+  
+		if (page) {
+			console.log("5",page);
+		  // Execute the command to open the page, passing the 'page' parameter
+		  vscode.commands.executeCommand('blackbox.openPage', page);
+		} else {
+		  vscode.window.showErrorMessage('No page specified in the URI.');
+		}
+	  }
+	}
+  }
+
+  function openPageInExtension(page) {
+	// Implement the logic to open the page in your extension
+	vscode.window.showInformationMessage(`Opening page: ${page}`);
+  
+	// Example: Create and show a WebviewPanel
+	const panel = vscode.window.createWebviewPanel(
+	  'blackboxWebview', // Identifies the type of the webview
+	  'Blackbox Extension', // Title of the panel
+	  vscode.ViewColumn.One, // Editor column to show the new webview panel in
+		{
+			enableScripts: true,
+			retainContextWhenHidden: true
+		}
+	);
+  
+	panel.webview.html = getWebviewContent(panel.webview, page);
+  }
+
+  function getWebviewContent(webview,page) {
+	//http://localhost:3000/chat/room/123
+	let chatUrl = `${API_BASE_URL}${page}?vsCode=true&userId=${userId}`;
+	vscode.window.showInformationMessage(`Opening URL ${chatUrl}`);
+
+	const cspSource = webview.cspSource;
+
+	/*if (updatedNewChat == undefined) {
+		chatUrl += `/?userId=${userId}`
+		_.globalState.update("newChat", true)
+		updatedNewChat = _.globalState.get("newChat")
+	}*/
+	return `
+			<!DOCTYPE html>
+  <html lang="en">
+  <head>
+	  <meta charset="UTF-8">
+	  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+	  <meta http-equiv="Content-Security-Policy" content="
+        default-src 'none';
+        frame-src ${API_BASE_URL};
+        script-src 'unsafe-inline' 'unsafe-eval' ${cspSource} ${API_BASE_URL};
+        style-src 'unsafe-inline' ${cspSource} ${API_BASE_URL};
+        img-src ${cspSource} ${API_BASE_URL} data:;
+        connect-src ${API_BASE_URL};
+      ">
+	  <style>
+        html, body, iframe {
+          margin: 0;
+          padding: 0;
+          width: 100%;
+          height: 100%;
+          overflow: hidden;
+        }
+      </style>
+	  <title>Group Chat</title>
+  </head>
+  <body style="margin:0px;padding:0px;overflow:hidden">
+    <iframe id="groupChatIFrame" src="${chatUrl}" frameborder="0" style="overflow:hidden;height:100vh;width:100%" 
+	height="100%" width="100%" 
+	sandbox="
+		allow-downloads
+		allow-forms
+		allow-modals
+		allow-orientation-lock
+		allow-pointer-lock
+		allow-popups
+		allow-popups-to-escape-sandbox
+		allow-presentation
+		allow-same-origin
+		allow-scripts
+		allow-storage-access-by-user-activation
+		allow-top-navigation
+		allow-top-navigation-by-user-activation
+		allow-top-navigation-to-custom-protocols
+		allow-downloads-without-user-activation
+		allow-payment-request
+  	"></iframe>
+	<script>
+        const vscode = acquireVsCodeApi();
+  </body>
+  </html>`;
+  }
 
 function gitActive(){
 	if (!vscode.workspace.workspaceFolders) {
